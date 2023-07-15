@@ -11,19 +11,19 @@ class HeaderTest(unittest.TestCase):
         self.h_u = header.HeaderUtils.instance(CONTENT_LENGTH_BITS, FILETYPE_BYTES, BITS_PER_PIXEL)
 
     def test_unsupported_filesize(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(OverflowError):
             self.h_u.encode_header(self.h_u.max_filesize + 1, "", 1, False, False)
 
     def test_too_many_bits_per_pixel(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(OverflowError):
             self.h_u.encode_header(self.h_u.max_filesize, "", self.h_u.max_bits_per_pixel + 1, True, True)
 
     def test_too_few_bits_per_channel(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(OverflowError):
             self.h_u.encode_header(self.h_u.max_filesize, "", 0, True, True)
 
     def test_too_long_filetype(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(OverflowError):
             self.h_u.encode_header(self.h_u.max_filesize, "ABCD", self.h_u.max_bits_per_pixel, True, True)
 
     def test_empty_file(self):
@@ -60,11 +60,11 @@ class HeaderTestDecode(unittest.TestCase):
         self.h_u = header.HeaderUtils.instance(CONTENT_LENGTH_BITS, FILETYPE_BYTES, BITS_PER_PIXEL)
 
     def test_unsupported_header(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(ValueError):
             self.h_u.decode_header((self.h_u.header_length+1) * "0")
 
     def test_invalid_characters(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(ValueError):
             self.h_u.decode_header(self.h_u.header_length * " ")
 
     def test_empty_file(self):
