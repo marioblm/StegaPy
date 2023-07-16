@@ -1,7 +1,7 @@
-import random
 import secrets
 import math
 from os import path
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import cv2
@@ -124,7 +124,7 @@ def encode(medium_filename, message_filename, hidden_filename, key=None, setup=N
             msg_array = np.stack((msg_array,noise_array,noise_array2), axis=-1)
         else:
             msg_array = np.stack((msg_array,msg_array,msg_array), axis=-1)
-            
+
     msg_slice = slice(len(header_array), len(header_array) + len(msg_array))
     flat_image[msg_slice] = (flat_image[msg_slice] & mask) + msg_array
 
@@ -135,6 +135,71 @@ def encode(medium_filename, message_filename, hidden_filename, key=None, setup=N
     print("Message was hidden in {}".format(hidden_filename))
 
 
+def write_bytes_to_file(bytes, file_extension, file_name):
+    """
+    Write bytes to a file with the specified file extension and name.
+
+    :param bytes: The bytes to be written to the file.
+    :param file_extension: The file extension.
+    :param file_name: The name of the file.
+    """
+    file_name = "{}.{}".format(file_name or "message", file_extension)
+    with open(file_name, "wb") as f:
+        f.write(bytes)
+    print("Message written to {}".format(file_name))
+
+
+def extract_bits(image, bits=1, all_channels=True):
+    """
+    Extract the specified number of bits from an image.
+
+    :param image: The image to extract bits from.
+    :param bits: The number of bits to extract per pixel.
+    :param all_channels: A boolean indicating whether to extract bits from all color channels.
+
+    :return: A list of extracted bits as binary strings.
+    """
+    mask = (1 << bits) - 1
+    if not all_channels:
+        image = image[:, :, ::3]
+    result = image & mask
+    result = [bin(x)[2:].zfill(bits) for x in np.ravel(result)]
+    return result
+
+
+def fetch_data_from_file(filename):
+    """
+    Fetch data hidden within an image file using LSB Substitution.
+
+    :param filename: The filename of the image file containing the hidden data.
+
+    :return: A tuple (extracted data as bytes, the filetype, whether it was encrypted or not).
+    """
+    image = cv2.imread(filename)
+    image_array = np.array(image)
+
+    bits_list = extract_bits(image_array)
+    binary_string = ''.join([str(x) for x in bits_list])
+
+    header_data = binary_string[:HeaderUtils().header_length]
+    length, filetype, bits, all_channels, enc = HeaderUtils().decode_header(header_data)
+    settings_differ_from_header = bits > 1 or not all_channels
+
+    if settings_differ_from_header:
+        bits_list = extract_bits(image_array, bits, all_channels)
+        binary_string = ''.join([str(x) for x in bits_list])
+
+    data_start = len(header_data)*bits
+    if not all_channels:
+        data_start = math.ceil(data_start / 9) * 3
+    else:
+        data_start += 2 * bits
+
+    cut_data = binary_string[data_start:data_start+length]
+    bytes_data = bytes([int(cut_data[i:i+8], 2) for i in range(0, len(cut_data), 8)])
+    return bytes_data, filetype, enc
+
+
 def decode(filename="hidden.png", key=None, output_name=None):
     """
     Decodes a hidden message from an image file.
@@ -142,5 +207,14 @@ def decode(filename="hidden.png", key=None, output_name=None):
     :param filename: The name of the image file containing the hidden message.
     :param key: The encryption key used to decrypt the message.
     :param output_name: The name of the output file (without extension).
+
+    :raises: ValueError if the key is missing and the message is encrypted.
+    :raises: InvalidTag if the decryption fails.
     """
-    pass
+    values, filetype, enc = fetch_data_from_file(filename)
+    if enc:
+        if key is None:
+            raise ValueError("Decryption key is missing")
+        else:
+            values = AESGCM(key).decrypt(values[:12], values[12:], b"")
+    write_bytes_to_file(values, filetype, output_name)
