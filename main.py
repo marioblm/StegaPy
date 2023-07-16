@@ -1,12 +1,16 @@
 import argparse
 
+import src.steg as steg
+
 
 def hide(args):
-    pass
+    print("-- HIDE --")
+    steg.encode(args.input_file, message_filename=args.file_to_be_hidden, key=args.key, hidden_filename=args.output)
 
 
 def reveal(args):
-    pass
+    print("-- REVEAL --")
+    steg.decode(args.input_file, key=args.key, output_name=args.output)
     
 
 def main():
